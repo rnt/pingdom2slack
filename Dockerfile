@@ -1,15 +1,14 @@
-FROM python:3.5
+FROM python:3.8.0-alpine3.10
 
 ENV FLASK_APP=pingdom2slack.py
 ENV FLASK_DEBUG=0
 
-RUN mkdir -p /app
 WORKDIR /app
 
-COPY . /app
-
-EXPOSE 5000
+COPY requirements.txt pingdom2slack.py ./
 
 RUN pip install -r requirements.txt
+
+EXPOSE 5000
 
 CMD ["flask", "run", "--host=0.0.0.0"]
