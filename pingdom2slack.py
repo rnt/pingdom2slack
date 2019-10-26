@@ -64,61 +64,59 @@ def health():
     return resp
 
 
-@app.route("/<channel>", methods=["GET", "POST"])
+@app.route("/<channel>", methods=["POST"])
 def slack_poster(channel):
-    if request.method == "POST":
-        # Initialize the fields of our message
-        check_name = None
-        check_url = None
-        status = None
-        error = None
+    # Initialize the fields of our message
+    check_name = None
+    check_url = None
+    status = None
+    error = None
 
-        # Define a default channell
-        if not channel:
-            channel = "#devops"
+    # Define a default channell
+    if not channel:
+        channel = "#devops"
 
-        try:
-            pingdom_data = request.get_json()
-        except Exception as e:
-            app.logger.error("Impossible to extract data from this pingdom call")
-            app.logger.error(e)
+    try:
+        pingdom_data = request.get_json()
+    except Exception as e:
+        app.logger.error("Impossible to extract data from this pingdom call")
+        app.logger.error(e)
 
-        try:
-            check_name = pingdom_data["check_name"]
-        except Exception as e:
-            app.logger.error("Impossible to extract check_name from this pingdom call")
-            app.logger.error(e)
-            app.logger.debug(pingdom_data)
+    try:
+        check_name = pingdom_data["check_name"]
+    except Exception as e:
+        app.logger.error("Impossible to extract check_name from this pingdom call")
+        app.logger.error(e)
+        app.logger.debug(pingdom_data)
 
-        try:
-            if "full_url" in pingdom_data["check_params"].keys():
-                check_url = pingdom_data["check_params"]["full_url"]
-            else:
-                check_url = pingdom_data["check_params"]["hostname"]
-        except Exception as e:
-            app.logger.error(
-                "Impossible to extract the full_url from this pingdom call"
-            )
-            app.logger.error(e)
-            app.logger.debug(pingdom_data)
+    try:
+        if "full_url" in pingdom_data["check_params"].keys():
+            check_url = pingdom_data["check_params"]["full_url"]
+        else:
+            check_url = pingdom_data["check_params"]["hostname"]
+    except Exception as e:
+        app.logger.error("Impossible to extract the full_url from this pingdom call")
+        app.logger.error(e)
+        app.logger.debug(pingdom_data)
 
-        try:
-            status = pingdom_data["current_state"]
-        except Exception as e:
-            app.logger.error("Impossible to extract status from this pingdom call")
-            app.logger.error(e)
-            app.logger.debug(pingdom_data)
+    try:
+        status = pingdom_data["current_state"]
+    except Exception as e:
+        app.logger.error("Impossible to extract status from this pingdom call")
+        app.logger.error(e)
+        app.logger.debug(pingdom_data)
 
-        try:
-            error = pingdom_data["long_description"]
-        except Exception as e:
-            app.logger.error(
-                "Impossible to extract error message from this pingdom call"
-            )
-            app.logger.error(e)
-            app.logger.debug(pingdom_data)
+    try:
+        error = pingdom_data["long_description"]
+    except Exception as e:
+        app.logger.error("Impossible to extract error message from this pingdom call")
+        app.logger.error(e)
+        app.logger.debug(pingdom_data)
 
-        app.logger.debug("Posting to %s: %s is %s" % (channel, check_name, status))
-        return post_2_slack("#%s" % channel, check_name, check_url, status, error)
-    else:
-        return "pingdom2slack : pingdom alerts to slack webhkook !"
+    app.logger.debug("Posting to %s: %s is %s" % (channel, check_name, status))
+    return post_2_slack("#%s" % channel, check_name, check_url, status, error)
+
+
+@app.route("/<channel>", methods=["GET"])
+def slack_poster_get(channel):
+    return "pingdom2slack : pingdom alerts to slack webhkook !"
