@@ -19,34 +19,121 @@ except:
     abort(502)
 
 
-def post_2_slack(channel, check_name, check_url, status, error):
-    # Choose attachment colot
-    if status == "UP":
-        color = "good"
+def post_2_slack(channel, pingdom_data):
+
+    check_name = pingdom_data["check_name"]
+
+    if "full_url" in pingdom_data["check_params"].keys():
+        check_url = pingdom_data["check_params"]["full_url"]
     else:
-        color = "danger"
+        check_url = pingdom_data["check_params"]["hostname"]
+
+    status = pingdom_data["current_state"]
+
+    error = pingdom_data["long_description"]
+
+    # Choose attachment colot
+    color = {"DOWN": "danger", "UP": "good"}.get(status, "#0000FF")
+
+    verify_certificate = {True: ":+1:", False: ":-1:"}.get(
+        pingdom_data["check_params"]["verify_certificate"], ":thinking_face:"
+    )
+
+    fields = [
+        {
+            "short": True,
+            "title": "Response Time Threshold",
+            "value": "%d ms" % pingdom_data["check_params"]["responsetime_threshold"],
+        },
+        {"short": True, "title": "Verify Certificate", "value": verify_certificate},
+    ]
+
+    if len(pingdom_data["check_params"]["shouldcontain"]) > 0:
+        fields.append(
+            {
+                "short": True,
+                "title": "Should Contain",
+                "value": "`%s`" % pingdom_data["check_params"]["shouldcontain"],
+            }
+        )
+
+    if len(pingdom_data["check_params"]["shouldnotcontain"]) > 0:
+        fields.append(
+            {
+                "short": True,
+                "title": "Should Not Contain",
+                "value": "`%s`" % pingdom_data["check_params"]["shouldnotcontain"],
+            }
+        )
+
+    if len(pingdom_data["first_probe"]["location"]) > 0:
+        fields.append(
+            {
+                "short": True,
+                "title": "First Probe",
+                "value": pingdom_data["first_probe"]["location"],
+            }
+        )
+
+    if len(pingdom_data["second_probe"].get("location", "")) > 0:
+        fields.append(
+            {
+                "short": True,
+                "title": "Second Probe",
+                "value": pingdom_data["second_probe"]["location"],
+            }
+        )
 
     # Let's build our payload
     payload = {
         "channel": channel,
+        "blocks": [
+            {
+                "text": {
+                    "text": "*%s* is *%s*." % (check_name, status),
+                    "type": "mrkdwn",
+                },
+                "type": "section",
+            },
+            {
+                "text": {
+                    "text": "%s" % (pingdom_data["long_description"]),
+                    "type": "mrkdwn",
+                },
+                "type": "section",
+            },
+            {
+                "text": {"text": "URL: %s" % (check_url), "type": "mrkdwn"},
+                "type": "section",
+            },
+            {
+                "elements": [
+                    {
+                        "text": "State Changed: %s"
+                        % pingdom_data["state_changed_utc_time"],
+                        "type": "mrkdwn",
+                    }
+                ],
+                "type": "context",
+            },
+        ],
         "attachments": [
             {
                 "fallback": "%s is %s" % (check_name, status),
                 "color": color,
                 "mrkdwn_in": ["text"],
-                "title": "%s is %s" % (check_name, status),
+                "fields": fields,
             }
         ],
+        "username": "Pingdom",
     }
-
-    if status == "DOWN":
-        payload["attachments"][0]["text"] = "%s | %s" % (check_url, error)
 
     # Add specific headers
     headers = {"Content-Type": "application/json"}
 
     # Make the call
     r = requests.post(SLACK_WEBHOOK, headers=headers, data=json.dumps(payload))
+    app.logger.debug(r.__dict__)
     if r.status_code == 200:
         return "OK", 200
     else:
@@ -113,8 +200,11 @@ def slack_poster(channel):
         app.logger.error(e)
         app.logger.debug(pingdom_data)
 
-    app.logger.debug("Posting to %s: %s is %s" % (channel, check_name, status))
-    return post_2_slack("#%s" % channel, check_name, check_url, status, error)
+    app.logger.debug(
+        "Posting to %s: %s is %s"
+        % (channel, pingdom_data["check_name"], pingdom_data["current_state"])
+    )
+    return post_2_slack("#%s" % channel, pingdom_data)
 
 
 @app.route("/<channel>", methods=["GET"])
