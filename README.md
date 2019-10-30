@@ -18,7 +18,7 @@ The environment variables used are:
 ### With Docker
 
 ```
-sudo docker run -d -e SLACK_WEBHOOK=https://***** -e PINGDOM_TOKEN=***** -p 5000:5000 rnt/pingdom2slack
+sudo docker run -d -e SLACK_WEBHOOK=https://***** -e PINGDOM_TOKEN=***** -p 5000:5000 rcovarru/pingdom2slack
 ```
 
 ### Standalone app
