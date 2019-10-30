@@ -67,7 +67,11 @@ def pingdom_analysis(check_id, state_changed_timestamp):
         for test in analysis
         if test["timefirsttest"] == state_changed_timestamp
     ]
-    app.logger.debug("pingdom analysis id = %d" % analysis_ids[0])
+    if len(analysis_ids) == 0:
+        app.logger.debug("No analysis id")
+        return None
+    else:
+        app.logger.debug("pingdom analysis id = %d" % analysis_ids[0])
 
     url = "https://api.pingdom.com/api/3.1/analysis/%d/%d" % (check_id, analysis_ids[0])
 
@@ -89,9 +93,15 @@ def post_2_slack(channel, pingdom_data):
 
     start_time = time.time()
 
-    analysis = pingdom_analysis(
-        pingdom_data["check_id"], pingdom_data["state_changed_timestamp"]
-    )
+    status = pingdom_data["current_state"]
+
+    icon_emoji = {"DOWN": ":warning:", "UP": ":ok:"}.get(status, ":ghost:")
+
+    analysis = None
+    if status == "DOWN":
+        analysis = pingdom_analysis(
+            pingdom_data["check_id"], pingdom_data["state_changed_timestamp"]
+        )
 
     analysis_time = time.time()
 
@@ -102,8 +112,6 @@ def post_2_slack(channel, pingdom_data):
     else:
         check_url = pingdom_data["check_params"]["hostname"]
 
-    status = pingdom_data["current_state"]
-
     error = pingdom_data["long_description"]
 
     # Choose attachment colot
@@ -112,40 +120,63 @@ def post_2_slack(channel, pingdom_data):
     verify_certificate = {True: ":+1:", False: ":-1:"}.get(
         pingdom_data["check_params"]["verify_certificate"], ":thinking_face:"
     )
+    basic_auth = {True: ":+1:", False: ":-1:"}.get(
+        pingdom_data["check_params"]["basic_auth"], ":thinking_face:"
+    )
 
     fields = []
 
-    BLOCK_ID_WEBHOOK_DATA = 1
-
     blocks = [
         {
-            "text": {"text": "*%s* is *%s*." % (check_name, status), "type": "mrkdwn"},
+            "text": {
+                "text": "%s *%s* is *%s* %s"
+                % (icon_emoji, check_name, status, icon_emoji),
+                "type": "mrkdwn",
+            },
             "type": "section",
         },
         {
+            "text": {"text": "*Check URL*:\n%s" % (check_url), "type": "mrkdwn"},
+            "type": "section",
+        },
+    ]
+
+    BLOCK_ID_WEBHOOK_DATA = len(blocks)
+    blocks.append(
+        {
             "fields": [
+                {
+                    "text": "*Check Type:*\n%s" % pingdom_data["check_type"],
+                    "type": "mrkdwn",
+                },
+                {
+                    "text": "*Importance Level:*\n%s"
+                    % pingdom_data["importance_level"],
+                    "type": "mrkdwn",
+                },
+                {"text": "*Basic auth?:*\n%s" % basic_auth, "type": "mrkdwn"},
+                {
+                    "text": "*Verify Certificate:*\n%s" % verify_certificate,
+                    "type": "mrkdwn",
+                },
                 {
                     "text": "*Response Time Threshold:*\n%s ms"
                     % pingdom_data["check_params"]["responsetime_threshold"],
                     "type": "mrkdwn",
                 },
-                {
-                    "text": "*Verify Certificate:*\n%s" % verify_certificate,
-                    "type": "mrkdwn",
-                },
             ],
             "type": "section",
-        },
-        {"type": "divider"},
-        {
-            "text": {
-                "text": "Downtime and *Root Cause Analysis* "
-                "(<https://www.pingdom.com/tutorial/downtime-root-cause/|read more>)",
+        }
+    )
+
+    if len(pingdom_data["tags"]) > 0:
+        blocks[BLOCK_ID_WEBHOOK_DATA]["fields"].append(
+            {
+                "text": "*Tags:*\n%s"
+                % ", ".join(["`%s`" for tag in pingdom_data["tags"]]),
                 "type": "mrkdwn",
-            },
-            "type": "section",
-        },
-    ]
+            }
+        )
 
     if len(pingdom_data["check_params"]["shouldcontain"]) > 0:
         blocks[BLOCK_ID_WEBHOOK_DATA]["fields"].append(
@@ -182,9 +213,33 @@ def post_2_slack(channel, pingdom_data):
             }
         )
 
+    if len(pingdom_data["custom_message"]) > 0:
+        blocks.append(
+            {
+                "text": {
+                    "text": "*Custom Message*: %s" % pingdom_data["custom_message"],
+                    "type": "mrkdwn",
+                },
+                "type": "section",
+            }
+        )
+
+    if status == "DOWN":
+        blocks.append({"type": "divider"})
+        blocks.append(
+            {
+                "text": {
+                    "text": "Downtime and *Root Cause Analysis* "
+                    "(<https://www.pingdom.com/tutorial/downtime-root-cause/|read more>)",
+                    "type": "mrkdwn",
+                },
+                "type": "section",
+            }
+        )
+
     analysis_counter = 0
 
-    if analysis is None:
+    if analysis is None and status == "DOWN":
         blocks.append(
             {
                 "text": {
@@ -194,7 +249,7 @@ def post_2_slack(channel, pingdom_data):
                 "type": "section",
             }
         )
-    else:
+    elif analysis is not None:
         for task in analysis["analysisresult"]["tasks"]:
 
             blocks.append(
@@ -254,6 +309,7 @@ def post_2_slack(channel, pingdom_data):
         "channel": channel,
         "blocks": blocks,
         "attachments": [],
+        "icon_emoji": icon_emoji,
         "username": "Pingdom",
     }
 
