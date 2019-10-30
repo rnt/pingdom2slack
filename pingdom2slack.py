@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
-from flask import Flask
-from flask import request
-from flask import abort
-from flask import make_response
-import requests
+
+import datetime
 import json
 import os
+import time
+
+from flask import abort, Flask, jsonify, request
+import requests
 
 app = Flask(__name__)
 
@@ -42,7 +43,13 @@ EMOJI_NUMBER = [
 
 
 def pingdom_analysis(check_id, state_changed_timestamp):
-    # Add specific headers
+    """Return pingdom analysis for a check.
+
+    :param int check_id: Pingdom check id to search
+    :param int state_changed_timestamp: RCA timestamp
+
+    :return dict
+    """
     headers = {"Authorization": "Bearer %s" % PINGDOM_TOKEN}
 
     url = "https://api.pingdom.com/api/3.1/analysis/%d" % check_id
@@ -74,10 +81,19 @@ def pingdom_analysis(check_id, state_changed_timestamp):
 
 
 def post_2_slack(channel, pingdom_data):
+    """Post message to slack.
+
+    :param str channel: Slack channel
+    :param dict pingdom_data: Data received from webhook
+    """
+
+    start_time = time.time()
 
     analysis = pingdom_analysis(
         pingdom_data["check_id"], pingdom_data["state_changed_timestamp"]
     )
+
+    analysis_time = time.time()
 
     check_name = pingdom_data["check_name"]
 
@@ -168,55 +184,70 @@ def post_2_slack(channel, pingdom_data):
 
     analysis_counter = 0
 
-    for task in analysis["analysisresult"]["tasks"]:
-
+    if analysis is None:
         blocks.append(
             {
                 "text": {
-                    "text": "%s analysis" % EMOJI_NUMBER[analysis_counter],
+                    "text": ":warning: Could no fetch analysis :warning: ",
                     "type": "mrkdwn",
                 },
                 "type": "section",
             }
         )
-        fields = []
-        raw_response = None
+    else:
+        for task in analysis["analysisresult"]["tasks"]:
 
-        for result in task["result"]:
-
-            value = result["value"]
-
-            if result["name"] == "raw_response":
-                # value = "```%s```" % "\n".join(result["value"])
-                raw_response = "```%s```" % "\n".join(result["value"])
-                continue
-            elif result["name"] == "communication_log":
-                continue
-                # if len(result["value"][0]["response_content"]) > 0:
-                #     value = "```%s```\n\n```%s```" % (
-                #         result["value"][0]["request"],
-                #         result["value"][0]["response_content"],
-                #     )
-                # else:
-                #     value = "```%s```" % (result["value"][0]["request"])
-
-            fields.append(
-                {"text": "*%s:*\n%s" % (result["name"], value), "type": "mrkdwn"}
-            )
-
-        blocks.append({"fields": fields, "type": "section"})
-        if raw_response is not None:
             blocks.append(
                 {
                     "text": {
-                        "text": "*Raw Response:*\n```%s```" % raw_response,
+                        "text": "%s analysis" % EMOJI_NUMBER[analysis_counter],
                         "type": "mrkdwn",
                     },
                     "type": "section",
                 }
             )
-        blocks.append({"type": "divider"})
-        analysis_counter += 1
+            fields = []
+            raw_response = None
+
+            for result in task["result"]:
+
+                value = result["value"]
+
+                if result["name"] == "timestamp":
+                    value = datetime.datetime.fromtimestamp(
+                        int(result["value"])
+                    ).strftime("%Y-%m-%d %H:%M:%S")
+                elif result["name"] == "raw_response":
+                    # value = "```%s```" % "\n".join(result["value"])
+                    raw_response = "\n".join(result["value"])
+                    continue
+                elif result["name"] == "communication_log":
+                    continue
+                    # if len(result["value"][0]["response_content"]) > 0:
+                    #     value = "```%s```\n\n```%s```" % (
+                    #         result["value"][0]["request"],
+                    #         result["value"][0]["response_content"],
+                    #     )
+                    # else:
+                    #     value = "```%s```" % (result["value"][0]["request"])
+
+                fields.append(
+                    {"text": "*%s:*\n%s" % (result["name"], value), "type": "mrkdwn"}
+                )
+
+            blocks.append({"fields": fields, "type": "section"})
+            if raw_response is not None:
+                blocks.append(
+                    {
+                        "text": {
+                            "text": "*Raw Response:*\n```%s```" % raw_response,
+                            "type": "mrkdwn",
+                        },
+                        "type": "section",
+                    }
+                )
+            blocks.append({"type": "divider"})
+            analysis_counter += 1
 
     # Let's build our payload
     payload = {
@@ -229,14 +260,40 @@ def post_2_slack(channel, pingdom_data):
     # Add specific headers
     headers = {"Content-Type": "application/json"}
 
+    start_slack_notify = time.time()
+
     # Make the call
-    r = requests.post(SLACK_WEBHOOK, headers=headers, data=json.dumps(payload))
-    app.logger.debug(r.__dict__)
-    if r.status_code == 200:
-        return "OK", 200
+    response = requests.post(SLACK_WEBHOOK, headers=headers, data=json.dumps(payload))
+
+    end_slack_notify = time.time()
+
+    app.logger.debug(response.__dict__)
+    if response.status_code == 200:
+        return (
+            jsonify(
+                {
+                    "analysis_time": analysis_time - start_time,
+                    "process_time": start_slack_notify - analysis_time,
+                    "notify_time": end_slack_notify - start_slack_notify,
+                    "total_time": time.time() - start_time,
+                }
+            ),
+            200,
+        )
     else:
-        app.logger.debug(r.content)
-        return "NOK", 400
+        app.logger.debug(response.content)
+        return (
+            jsonify(
+                {
+                    "analysis_time": analysis_time - start_time,
+                    "process_time": start_slack_notify - analysis_time,
+                    "notify_time": end_slack_notify - start_slack_notify,
+                    "total_time": time.time() - start_time,
+                    "content": response.content,
+                }
+            ),
+            response.status_code,
+        )
 
 
 @app.route("/monitoring/health", methods=["GET"])
@@ -245,8 +302,8 @@ def health():
     if SLACK_WEBHOOK is None or PINGDOM_TOKEN is None:
         status = 500
 
-    resp = make_response(
-        json.dumps(
+    return (
+        jsonify(
             {
                 "SLACK_WEBHOOK": SLACK_WEBHOOK is not None,
                 "PINGDOM_TOKEN": PINGDOM_TOKEN is not None,
@@ -254,9 +311,6 @@ def health():
         ),
         status,
     )
-
-    resp.headers["Content-Type"] = "application/json"
-    return resp
 
 
 @app.route("/<channel>", methods=["POST"])
@@ -267,9 +321,11 @@ def slack_poster(channel):
     status = None
     error = None
 
+    app.logger.info("Post message to %s channel", channel)
+
     # Define a default channell
     if not channel:
-        channel = "#devops"
+        return jsonify({"error": "channel is missing"}), 400
 
     try:
         pingdom_data = request.get_json()
