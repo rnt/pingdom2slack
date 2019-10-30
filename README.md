@@ -5,6 +5,16 @@ The goal is to add the error message when one of your site is down.
 
 ## Usage
 
+The environment variables used are:
+
+| Environment variable |                         Description                         |   Type   |   Default   |
+|:--------------------:|:-----------------------------------------------------------:|:--------:|:-----------:|
+|   `SLACK_WEBHOOK`    |                       Slack webhook.                        | Required |             |
+|   `PINGDOM_TOKEN`    |                 Pingdom token for v3.1 API                  | Required |             |
+|  `TITLE_EMOJI_DOWN`  | Emoji to use in the title, when the notification is by DOWN | Optional | `:warning:` |
+|   `TITLE_EMOJI_UP`   |  Emoji to use in the title, when the notification is by UP  | Optional |   `:ok:`    |
+
+
 ### With Docker
 
 ```

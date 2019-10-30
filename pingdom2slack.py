@@ -97,6 +97,11 @@ def post_2_slack(channel, pingdom_data):
 
     icon_emoji = {"DOWN": ":warning:", "UP": ":ok:"}.get(status, ":ghost:")
 
+    title_emoji = {
+        "DOWN": os.environ.get("TITLE_EMOJI_DOWN", ":warning:"),
+        "UP": os.environ.get("TITLE_EMOJI_UP", ":ok:"),
+    }.get(status, ":ghost:")
+
     analysis = None
     if status == "DOWN":
         analysis = pingdom_analysis(
@@ -130,7 +135,7 @@ def post_2_slack(channel, pingdom_data):
         {
             "text": {
                 "text": "%s *%s* is *%s* %s"
-                % (icon_emoji, check_name, status, icon_emoji),
+                % (title_emoji, check_name, status, title_emoji),
                 "type": "mrkdwn",
             },
             "type": "section",
