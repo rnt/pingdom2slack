@@ -183,7 +183,7 @@ def post_2_slack(channel, pingdom_data):
             }
         )
 
-    if len(pingdom_data["check_params"]["shouldcontain"]) > 0:
+    if len(pingdom_data.get("check_params", {}).get("shouldcontain", "")) > 0:
         blocks[BLOCK_ID_WEBHOOK_DATA]["fields"].append(
             {
                 "text": "*Should Contain:*\n`%s`"
@@ -192,7 +192,7 @@ def post_2_slack(channel, pingdom_data):
             }
         )
 
-    if len(pingdom_data["check_params"]["shouldnotcontain"]) > 0:
+    if len(pingdom_data.get("check_params", {}).get("shouldnotcontain", "")) > 0:
         blocks[BLOCK_ID_WEBHOOK_DATA]["fields"].append(
             {
                 "text": "*Should Not Contain:*\n`%s`"
