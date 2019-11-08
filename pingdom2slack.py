@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-
 import datetime
 import json
 import os
@@ -8,6 +7,8 @@ import time
 
 from flask import abort, Flask, jsonify, request
 import requests
+
+__version__ = "0.1.2"
 
 app = Flask(__name__)
 
@@ -201,7 +202,7 @@ def post_2_slack(channel, pingdom_data):
             }
         )
 
-    if len(pingdom_data["first_probe"]["location"]) > 0:
+    if len(pingdom_data.get("first_probe", {}).get("location", "")) > 0:
         blocks[BLOCK_ID_WEBHOOK_DATA]["fields"].append(
             {
                 "text": "*First Probe:*\n%s" % pingdom_data["first_probe"]["location"],
@@ -209,7 +210,7 @@ def post_2_slack(channel, pingdom_data):
             }
         )
 
-    if len(pingdom_data["second_probe"].get("location", "")) > 0:
+    if len(pingdom_data.get("second_probe", {}).get("location", "")) > 0:
         blocks[BLOCK_ID_WEBHOOK_DATA]["fields"].append(
             {
                 "text": "*Second Probe:*\n%s"
@@ -368,6 +369,7 @@ def health():
             {
                 "SLACK_WEBHOOK": SLACK_WEBHOOK is not None,
                 "PINGDOM_TOKEN": PINGDOM_TOKEN is not None,
+                "version": __version__,
             }
         ),
         status,
