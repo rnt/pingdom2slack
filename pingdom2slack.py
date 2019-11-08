@@ -8,7 +8,7 @@ import time
 from flask import abort, Flask, jsonify, request
 import requests
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 app = Flask(__name__)
 
@@ -179,7 +179,7 @@ def post_2_slack(channel, pingdom_data):
         blocks[BLOCK_ID_WEBHOOK_DATA]["fields"].append(
             {
                 "text": "*Tags:*\n%s"
-                % ", ".join(["`%s`" for tag in pingdom_data["tags"]]),
+                % ", ".join(["`%s`" % tag for tag in pingdom_data["tags"]]),
                 "type": "mrkdwn",
             }
         )
